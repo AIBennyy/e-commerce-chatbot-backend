@@ -13,7 +13,8 @@
     "lint:fix": "eslint . --fix",
     "dashboard:build": "cd dashboard && npm run build",
     "dashboard:dev": "cd dashboard && npm run dev",
-    "postinstall": "cd dashboard && npm install"
+    "postinstall": "cd dashboard && npm install",
+    "heroku-postbuild": "npm install --only=prod"
   },
   "engines": {
     "node": ">=16.0.0",
