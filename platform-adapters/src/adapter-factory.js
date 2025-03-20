@@ -3,9 +3,8 @@
  * Creates and manages platform-specific adapter instances
  */
 const MotonetAdapter = require('./adapters/motonet-adapter');
-// Import other adapters as they are implemented
-// const SMarketAdapter = require('./adapters/smarket-adapter');
-// const GiganttiAdapter = require('./adapters/gigantti-adapter');
+const SRyhmaAdapter = require('./adapters/sryhma-adapter');
+const GiganttiAdapter = require('./adapters/gigantti-adapter');
 
 class ECommerceAdapterFactory {
   /**
@@ -38,14 +37,13 @@ class ECommerceAdapterFactory {
         this.adapters[platform] = new MotonetAdapter(this.cookieManager);
         break;
         
-      // Uncomment as other adapters are implemented
-      // case 'smarket':
-      //   this.adapters[platform] = new SMarketAdapter(this.cookieManager);
-      //   break;
+      case 'sryhma':
+        this.adapters[platform] = new SRyhmaAdapter(this.cookieManager);
+        break;
         
-      // case 'gigantti':
-      //   this.adapters[platform] = new GiganttiAdapter(this.cookieManager);
-      //   break;
+      case 'gigantti':
+        this.adapters[platform] = new GiganttiAdapter(this.cookieManager);
+        break;
         
       default:
         throw new Error(`Unsupported platform: ${platform}`);
@@ -59,7 +57,7 @@ class ECommerceAdapterFactory {
    * @returns {Array} - Array of supported platform identifiers
    */
   getSupportedPlatforms() {
-    return ['motonet']; // Add others as they are implemented
+    return ['motonet', 'sryhma', 'gigantti']; // Add others as they are implemented
   }
 
   /**

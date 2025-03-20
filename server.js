@@ -9,8 +9,13 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const winston = require('winston');
 require('dotenv').config();
+
+// Import the dashboard API module
+const dashboardApi = require('./dashboard-api');
+
+// Import the error monitoring system
+const errorMonitoring = require('./error-monitoring');
 
 // Create Express app
 const app = express();
@@ -18,7 +23,7 @@ const app = express();
 // Configure CORS for production
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',') 
-  : ['https://e-commerce-chatbot-demo.vercel.app'];
+  : ['https://e-commerce-chatbot-frontend.vercel.app'];
 
 app.use(cors({
   origin: function(origin, callback) {
@@ -36,29 +41,47 @@ app.use(cors({
 
 app.use(express.json());
 
-// Configure logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(({ level, message, timestamp }) => {
-      return `${timestamp} ${level.toUpperCase()}: ${message}`;
-    })
-  ),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: 'proxy-server.log' })
-  ]
-});
+// Add request logging middleware
+app.use(errorMonitoring.createRequestLoggerMiddleware());
+
+// Configure logger - use the enhanced logger from error monitoring
+const logger = errorMonitoring.logger;
 
 // Store supported e-commerce platforms
 const PLATFORMS = {
   MOTONET: 'motonet',
-  RUSTA: 'rusta'
+  RUSTA: 'rusta',
+  SRYHMA: 'sryhma',
+  GIGANTTI: 'gigantti'
 };
 
 // Default platform
 let currentPlatform = PLATFORMS.MOTONET;
+
+// Add the dashboard API routes
+app.use('/api/dashboard', dashboardApi.router);
+
+// Middleware to log API operations for dashboard monitoring
+app.use((req, res, next) => {
+  const originalSend = res.send;
+  const start = Date.now();
+  
+  res.send = function(data) {
+    const responseTime = Date.now() - start;
+    const platform = req.body?.platform || currentPlatform;
+    const operation = req.path;
+    
+    if (res.statusCode >= 400) {
+      dashboardApi.logError(platform, operation, `HTTP ${res.statusCode}: ${data}`);
+    } else {
+      dashboardApi.logSuccess(platform, operation, responseTime);
+    }
+    
+    return originalSend.apply(res, arguments);
+  };
+  
+  next();
+});
 
 /**
  * Process cookie string to ensure it's properly formatted
@@ -120,6 +143,44 @@ function getPlatformConfig() {
           'Referer': (process.env.RUSTA_URL || 'https://www.rusta.com/fi') + '/',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
           'Cookie': rustaCookie, // Use the processed cookie string
+          'Connection': 'keep-alive',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      };
+    case PLATFORMS.SRYHMA:
+      // Process the cookie string to ensure it's properly formatted
+      const sryhmaCookie = processCookieString(process.env.SRYHMA_COOKIE);
+      
+      return {
+        baseUrl: process.env.SRYHMA_URL || 'https://www.s-kaupat.fi',
+        cartAddEndpoint: process.env.SRYHMA_API_CART_ADD || '/api/cart/add',
+        cookie: sryhmaCookie,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': '*/*',
+          'Origin': process.env.SRYHMA_URL || 'https://www.s-kaupat.fi',
+          'Referer': (process.env.SRYHMA_URL || 'https://www.s-kaupat.fi') + '/',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+          'Cookie': sryhmaCookie,
+          'Connection': 'keep-alive',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      };
+    case PLATFORMS.GIGANTTI:
+      // Process the cookie string to ensure it's properly formatted
+      const giganttCookie = processCookieString(process.env.GIGANTTI_COOKIE);
+      
+      return {
+        baseUrl: process.env.GIGANTTI_URL || 'https://www.gigantti.fi',
+        cartAddEndpoint: process.env.GIGANTTI_API_CART_ADD || '/api/cart/add',
+        cookie: giganttCookie,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': '*/*',
+          'Origin': process.env.GIGANTTI_URL || 'https://www.gigantti.fi',
+          'Referer': (process.env.GIGANTTI_URL || 'https://www.gigantti.fi') + '/',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+          'Cookie': giganttCookie,
           'Connection': 'keep-alive',
           'X-Requested-With': 'XMLHttpRequest'
         }
@@ -212,6 +273,13 @@ app.post('/api/add-to-cart', async (req, res) => {
         
         logger.info(`Response status: ${response.status}`);
         
+        // Log successful operation
+        errorMonitoring.logSuccess(currentPlatform, 'add-to-cart', Date.now(), {
+          productId,
+          quantity,
+          responseStatus: response.status
+        });
+        
         return res.json({
           success: true,
           platform: currentPlatform,
@@ -264,10 +332,26 @@ app.post('/api/add-to-cart', async (req, res) => {
       }
     }
     
+    // Log the error with the error monitoring system
+    errorMonitoring.logError(
+      lastError, 
+      currentPlatform, 
+      'add-to-cart', 
+      { productId, quantity }
+    );
+    
     logger.error(`Final error response: ${JSON.stringify(errorResponse)}`);
     return res.status(500).json(errorResponse);
     
   } catch (error) {
+    // Log the unexpected error
+    errorMonitoring.logError(
+      error, 
+      currentPlatform, 
+      'add-to-cart', 
+      { productId, quantity }
+    );
+    
     logger.error(`Unexpected error: ${error.message}`);
     return res.status(500).json({ 
       error: 'Unexpected error occurred', 
@@ -285,7 +369,9 @@ app.get('/health', (req, res) => {
     currentPlatform,
     cookieStatus: {
       [PLATFORMS.MOTONET]: !!process.env.MOTONET_COOKIE,
-      [PLATFORMS.RUSTA]: !!process.env.RUSTA_COOKIE
+      [PLATFORMS.RUSTA]: !!process.env.RUSTA_COOKIE,
+      [PLATFORMS.SRYHMA]: !!process.env.SRYHMA_COOKIE,
+      [PLATFORMS.GIGANTTI]: !!process.env.GIGANTTI_COOKIE
     }
   });
 });
@@ -306,7 +392,7 @@ app.get('/', (req, res) => {
       <body>
         <h1>E-Commerce Chatbot API</h1>
         <p>This is the backend API for the E-Commerce Chatbot. The frontend interface is available at 
-           <a href="https://e-commerce-chatbot-demo.vercel.app" target="_blank">https://e-commerce-chatbot-demo.vercel.app</a>.</p>
+           <a href="https://e-commerce-chatbot-frontend.vercel.app" target="_blank">https://e-commerce-chatbot-frontend.vercel.app</a>.</p>
         
         <h2>Available Endpoints:</h2>
         
@@ -318,7 +404,7 @@ app.get('/', (req, res) => {
         <div class="endpoint">
           <h3>POST /api/switch-platform</h3>
           <p>Switch between supported e-commerce platforms.</p>
-          <p>Payload: <code>{ "platform": "motonet" }</code> or <code>{ "platform": "rusta" }</code></p>
+          <p>Payload: <code>{ "platform": "motonet" }</code>, <code>{ "platform": "rusta" }</code>, <code>{ "platform": "sryhma" }</code>, or <code>{ "platform": "gigantti" }</code></p>
         </div>
         
         <div class="endpoint">
@@ -326,10 +412,19 @@ app.get('/', (req, res) => {
           <p>Add a product to the shopping cart.</p>
           <p>Payload: <code>{ "productId": "59-5064", "quantity": 1 }</code></p>
         </div>
+
+        <div class="endpoint">
+          <h3>Dashboard API</h3>
+          <p>Access the dashboard at <a href="/dashboard" target="_blank">/dashboard</a></p>
+          <p>The dashboard provides monitoring, configuration, and analytics for the e-commerce chatbot system.</p>
+        </div>
       </body>
     </html>
   `);
 });
+
+// Add error handling middleware
+app.use(errorMonitoring.createErrorMiddleware());
 
 // Start the server
 const PORT = process.env.PORT || 3000;
