@@ -52,3 +52,6 @@
   "author": "AIBennyy",
   "license": "MIT"
 }
+"scripts": {
+  "heroku-postbuild": "npm install --only=prod"
+}
