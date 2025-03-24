@@ -58,8 +58,14 @@ const PLATFORMS = {
 // Default platform
 let currentPlatform = PLATFORMS.MOTONET;
 
+// Import the cart API routes
+const cartRoutes = require('./routes/cart');
+
 // Add the dashboard API routes
 app.use('/api/dashboard', dashboardApi.router);
+
+// Add the cart API routes
+app.use('/api/cart', cartRoutes);
 
 // Middleware to log API operations for dashboard monitoring
 app.use((req, res, next) => {

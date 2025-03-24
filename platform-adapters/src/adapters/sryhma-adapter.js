@@ -15,6 +15,7 @@ class SRyhmaAdapter extends BaseECommerceAdapter {
     this.platformId = 'sryhma';
     this.baseUrl = 'https://www.s-kaupat.fi';
     this.apiBaseUrl = 'https://www.s-kaupat.fi/api';
+    this.cartPath = '/cart';
   }
 
   /**

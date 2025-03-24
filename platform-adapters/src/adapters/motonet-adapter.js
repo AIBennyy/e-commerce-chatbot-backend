@@ -15,6 +15,7 @@ class MotonetAdapter extends BaseECommerceAdapter {
     this.platformId = 'motonet';
     this.baseUrl = 'https://www.motonet.fi';
     this.apiBaseUrl = 'https://www.motonet.fi/api';
+    this.cartPath = '/fi/ostoskori';
   }
 
   /**
