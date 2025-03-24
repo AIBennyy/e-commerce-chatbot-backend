@@ -40,7 +40,21 @@ module.exports = {
       username: process.env.SMARKET_USERNAME || '',
       password: process.env.SMARKET_PASSWORD || '',
       cookieMaxAge: parseInt(process.env.SMARKET_COOKIE_MAX_AGE || '86400000', 10),
-      essentialCookies: [], // To be determined
+      essentialCookies: [
+        'JSESSIONID',
+        'AWSALB',
+        'AWSALBCORS',
+        's_kaupat_session',
+        'selectedStore',
+        'selectedStoreId',
+        'cartId',
+        'customerId',
+        'customerToken',
+        'sessionId',
+        '_ga',
+        '_gid',
+        'OptanonConsent'
+      ],
     },
     gigantti: {
       url: process.env.GIGANTTI_URL || 'https://www.gigantti.fi',
@@ -48,7 +62,26 @@ module.exports = {
       username: process.env.GIGANTTI_USERNAME || '',
       password: process.env.GIGANTTI_PASSWORD || '',
       cookieMaxAge: parseInt(process.env.GIGANTTI_COOKIE_MAX_AGE || '86400000', 10),
-      essentialCookies: [], // To be determined
+      essentialCookies: [
+        'JSESSIONID',
+        'ASP.NET_SessionId',
+        'cart-id',
+        'customer-id',
+        'gigantti_session',
+        'gigantti_cart',
+        'gigantti_user',
+        'gigantti_auth',
+        'BVBRANDID',
+        'BVBRANDSID',
+        '_ga',
+        '_gid',
+        'coi_status',
+        'dwanonymous_',
+        'dwsecuretoken_',
+        'dwsid',
+        '__cq_dnt',
+        'dw_'
+      ],
     },
   },
   
