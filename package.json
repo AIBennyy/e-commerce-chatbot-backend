@@ -14,12 +14,13 @@
     "dashboard:build": "cd dashboard && npm run build",
     "dashboard:dev": "cd dashboard && npm run dev",
     "postinstall": "cd dashboard && npm install",
-    "heroku-postbuild": "npm install --only=prod"
+    "heroku-postbuild": "npm ci --production=false"
   },
   "engines": {
-    "node": ">=16.0.0",
-    "npm": ">=8.0.0"
+    "node": "16.x",
+    "npm": "8.x"
   },
+  "cacheDirectories": ["node_modules"],
   "dependencies": {
     "axios": "^1.6.0",
     "cors": "^2.8.5",
