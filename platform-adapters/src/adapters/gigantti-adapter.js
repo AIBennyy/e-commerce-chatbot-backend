@@ -15,6 +15,7 @@ class GiganttiAdapter extends BaseECommerceAdapter {
     this.platformId = 'gigantti';
     this.baseUrl = 'https://www.gigantti.fi';
     this.apiBaseUrl = 'https://www.gigantti.fi/api';
+    this.cartPath = '/cart';
   }
 
   /**
