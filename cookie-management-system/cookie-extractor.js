@@ -1,8 +1,8 @@
 /**
  * Cookie Extractor module for cookie management system
- * Uses Puppeteer to extract cookies from e-commerce websites
+ * Uses Puppeteer Core to extract cookies from e-commerce websites
  */
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const config = require('./config');
 const logger = require('./logger');
 
@@ -21,6 +21,7 @@ class CookieExtractor {
     logger.info(`Starting cookie extraction for ${platform}`);
 
     const browser = await puppeteer.launch({
+      executablePath: process.env.CHROME_BIN || '/app/.apt/usr/bin/google-chrome',
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
