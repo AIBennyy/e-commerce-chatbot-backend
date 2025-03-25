@@ -1,18 +1,13 @@
 /**
  * Enhanced Error Logging and Monitoring System
  * Provides centralized error handling, logging, and monitoring capabilities
+ * Modified for Heroku compatibility
  */
 
 const winston = require('winston');
 const { format } = winston;
 const path = require('path');
 const fs = require('fs');
-
-// Create logs directory if it doesn't exist
-const logsDir = path.join(__dirname, 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
-}
 
 // Define log formats
 const consoleFormat = format.combine(
@@ -32,49 +27,74 @@ const fileFormat = format.combine(
   format.json()
 );
 
-// Create the logger
+// Create the logger with Heroku-compatible configuration
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   defaultMeta: { service: 'e-commerce-chatbot' },
   transports: [
-    // Console transport
+    // Console transport - primary for Heroku
     new winston.transports.Console({
       format: consoleFormat
-    }),
-    // Error log file transport
-    new winston.transports.File({
-      filename: path.join(logsDir, 'error.log'),
-      level: 'error',
-      format: fileFormat,
-      maxsize: 5242880, // 5MB
-      maxFiles: 5
-    }),
-    // Combined log file transport
-    new winston.transports.File({
-      filename: path.join(logsDir, 'combined.log'),
-      format: fileFormat,
-      maxsize: 5242880, // 5MB
-      maxFiles: 5
     })
-  ],
-  // Handle uncaught exceptions and unhandled rejections
-  exceptionHandlers: [
+  ]
+});
+
+// Only create file transports in development environment, not on Heroku
+if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'staging') {
+  // Create logs directory if it doesn't exist
+  const logsDir = path.join(__dirname, 'logs');
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
+  
+  // Add file transports for local development
+  logger.add(new winston.transports.File({
+    filename: path.join(logsDir, 'error.log'),
+    level: 'error',
+    format: fileFormat,
+    maxsize: 5242880, // 5MB
+    maxFiles: 5
+  }));
+  
+  logger.add(new winston.transports.File({
+    filename: path.join(logsDir, 'combined.log'),
+    format: fileFormat,
+    maxsize: 5242880, // 5MB
+    maxFiles: 5
+  }));
+  
+  // Add exception and rejection handlers for local development
+  logger.exceptions.handle(
     new winston.transports.File({ 
       filename: path.join(logsDir, 'exceptions.log'),
       format: fileFormat,
       maxsize: 5242880, // 5MB
       maxFiles: 5
     })
-  ],
-  rejectionHandlers: [
+  );
+  
+  logger.rejections.handle(
     new winston.transports.File({ 
       filename: path.join(logsDir, 'rejections.log'),
       format: fileFormat,
       maxsize: 5242880, // 5MB
       maxFiles: 5
     })
-  ]
-});
+  );
+} else {
+  // For production/staging, add exception and rejection handlers to console
+  logger.exceptions.handle(
+    new winston.transports.Console({
+      format: consoleFormat
+    })
+  );
+  
+  logger.rejections.handle(
+    new winston.transports.Console({
+      format: consoleFormat
+    })
+  );
+}
 
 // In-memory storage for recent errors (for dashboard display)
 const recentErrors = [];
