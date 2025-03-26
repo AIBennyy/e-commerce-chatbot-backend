@@ -167,10 +167,7 @@ class MotonetAdapter extends BaseECommerceAdapter {
         const cartResponse = await axios({
           method: 'post',
           url: `${this.baseUrl}/fi/cart/add`,
-          headers: {
-            ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
-            'Content-Type': 'application/json'
-          },
+          headers: this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
           data: {
             productId: formattedProductId,
             quantity: quantity
@@ -219,6 +216,24 @@ class MotonetAdapter extends BaseECommerceAdapter {
         }
       } catch (formError) {
         console.error(`Error with form submission for ${formattedProductId}:`, formError);
+      }
+      
+      // Also try the tracking endpoint for analytics (but don't rely on it for cart addition)
+      try {
+        await axios({
+          method: 'post',
+          url: `${this.apiBaseUrl}/tracking/add-to-cart`,
+          headers: this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
+          data: {
+            productId: formattedProductId,
+            quantity: quantity
+          },
+          timeout: 5000
+        });
+        console.log(`Tracking request sent for ${formattedProductId}`);
+      } catch (trackingError) {
+        // Tracking errors shouldn't fail the whole operation
+        console.warn(`Tracking request failed:`, trackingError.message);
       }
       
       // If both methods fail, throw an error
