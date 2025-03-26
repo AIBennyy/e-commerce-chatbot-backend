@@ -1,178 +1,192 @@
 /**
  * Cookie Management System
- * Handles cookie storage, retrieval, and refresh for e-commerce platform adapters
+ * 
+ * Handles cookie storage, retrieval, and refresh for e-commerce platform adapters.
+ * This system ensures that cookies are always up-to-date and properly formatted.
  */
 const crypto = require('crypto');
+const logger = require('./error-monitoring').logger || console;
 
 class CookieManagementSystem {
   constructor() {
     this.cookies = {};
-    this.initialized = false;
-    this.initialize();
+    this.refreshTimers = {};
+    this.encryptionKey = process.env.ENCRYPTION_KEY || 'default-encryption-key';
   }
 
   /**
-   * Initialize the cookie management system
-   * Load cookies from environment variables
+   * Initialize cookies for a specific platform
+   * @param {string} platformId - Platform identifier (e.g., 'motonet', 'sryhma')
+   * @returns {Promise<boolean>} - Success status
    */
-  initialize() {
+  async initializeCookies(platformId) {
     try {
-      console.log('Initializing cookie management system');
+      logger.info(`Initializing cookies for platform: ${platformId}`);
       
-      // Load cookies from environment variables
-      this.loadCookiesFromEnv();
+      // Get cookies from environment variable
+      const cookieEnvVar = `${platformId.toUpperCase()}_COOKIE`;
+      const cookieString = process.env[cookieEnvVar];
       
-      this.initialized = true;
-      console.log('Cookie management system initialized successfully');
-    } catch (error) {
-      console.error('Error initializing cookie management system:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Load cookies from environment variables
-   */
-  loadCookiesFromEnv() {
-    try {
-      console.log('Loading cookies from environment variables');
-      
-      // Load Motonet cookies
-      const motonetCookie = process.env.MOTONET_COOKIE;
-      if (motonetCookie) {
-        console.log('Found Motonet cookies in environment variables');
-        this.setCookies('motonet', motonetCookie);
-      } else {
-        console.warn('No Motonet cookies found in environment variables');
-      }
-      
-      // Add other platforms here as needed
-      
-    } catch (error) {
-      console.error('Error loading cookies from environment variables:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Set cookies for a platform
-   * @param {string} platformId - Platform identifier
-   * @param {string} cookieString - Cookie string
-   */
-  setCookies(platformId, cookieString) {
-    try {
-      console.log(`Setting cookies for platform: ${platformId}`);
-      
-      // Remove "Cookie: " prefix if present
-      const cleanCookieString = cookieString.startsWith('Cookie: ') 
-        ? cookieString.substring(8) 
-        : cookieString;
-      
-      this.cookies[platformId] = {
-        cookieString: cleanCookieString,
-        timestamp: Date.now(),
-        parsed: this.parseCookieString(cleanCookieString)
-      };
-      
-      console.log(`Cookies set for platform: ${platformId}`);
-      return true;
-    } catch (error) {
-      console.error(`Error setting cookies for platform ${platformId}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Parse cookie string into object
-   * @param {string} cookieString - Cookie string
-   * @returns {Object} - Parsed cookies
-   */
-  parseCookieString(cookieString) {
-    try {
-      const cookies = {};
-      const cookiePairs = cookieString.split(';');
-      
-      for (const pair of cookiePairs) {
-        const [name, value] = pair.trim().split('=');
-        if (name && value) {
-          cookies[name] = value;
-        }
-      }
-      
-      return cookies;
-    } catch (error) {
-      console.error('Error parsing cookie string:', error);
-      return {};
-    }
-  }
-
-  /**
-   * Get the latest cookies for a platform
-   * @param {string} platformId - Platform identifier
-   * @returns {Object|null} - Cookie data or null if not found
-   */
-  getLatestCookies(platformId) {
-    try {
-      console.log(`Getting latest cookies for platform: ${platformId}`);
-      
-      if (!this.initialized) {
-        console.log('Cookie management system not initialized, initializing now');
-        this.initialize();
-      }
-      
-      if (!this.cookies[platformId]) {
-        console.warn(`No cookies found for platform: ${platformId}`);
-        return null;
-      }
-      
-      // Check if cookies are expired
-      const cookieData = this.cookies[platformId];
-      const now = Date.now();
-      const maxAge = process.env[`${platformId.toUpperCase()}_COOKIE_MAX_AGE`] || 86400000; // Default: 24 hours
-      
-      if (now - cookieData.timestamp > maxAge) {
-        console.warn(`Cookies for platform ${platformId} are expired`);
-        // Try to refresh cookies
-        this.loadCookiesFromEnv();
-        
-        // Check if refresh was successful
-        if (!this.cookies[platformId] || now - this.cookies[platformId].timestamp > maxAge) {
-          console.error(`Failed to refresh expired cookies for platform ${platformId}`);
-          return null;
-        }
-      }
-      
-      console.log(`Retrieved latest cookies for platform: ${platformId}`);
-      return this.cookies[platformId];
-    } catch (error) {
-      console.error(`Error getting latest cookies for platform ${platformId}:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Refresh cookies for a platform
-   * @param {string} platformId - Platform identifier
-   * @returns {boolean} - Success status
-   */
-  refreshCookies(platformId) {
-    try {
-      console.log(`Refreshing cookies for platform: ${platformId}`);
-      
-      // For now, just reload from environment variables
-      this.loadCookiesFromEnv();
-      
-      if (!this.cookies[platformId]) {
-        console.warn(`No cookies found for platform ${platformId} after refresh`);
+      if (!cookieString) {
+        logger.warn(`No cookies found in environment variable ${cookieEnvVar}`);
         return false;
       }
       
-      console.log(`Successfully refreshed cookies for platform: ${platformId}`);
+      // Store cookies
+      this.cookies[platformId] = {
+        cookieString,
+        timestamp: Date.now(),
+        expiresAt: Date.now() + this.getCookieMaxAge(platformId)
+      };
+      
+      logger.info(`Cookies initialized for platform: ${platformId}`);
       return true;
     } catch (error) {
-      console.error(`Error refreshing cookies for platform ${platformId}:`, error);
+      logger.error(`Error initializing cookies for platform ${platformId}: ${error.message}`);
       return false;
     }
+  }
+
+  /**
+   * Get the latest cookies for a specific platform
+   * @param {string} platformId - Platform identifier (e.g., 'motonet', 'sryhma')
+   * @returns {Promise<Object>} - Cookie object with cookieString and metadata
+   */
+  async getLatestCookies(platformId) {
+    try {
+      logger.info(`Getting latest cookies for platform: ${platformId}`);
+      
+      // Check if cookies exist for this platform
+      if (!this.cookies[platformId]) {
+        // Try to initialize cookies
+        const initialized = await this.initializeCookies(platformId);
+        if (!initialized) {
+          logger.error(`No valid cookies found for ${platformId}`);
+          throw new Error(`No valid cookies found for ${platformId}`);
+        }
+      }
+      
+      // Check if cookies are expired
+      if (this.cookies[platformId].expiresAt < Date.now()) {
+        logger.info(`Cookies for ${platformId} are expired, refreshing...`);
+        await this.refreshCookies(platformId);
+      }
+      
+      logger.info(`Retrieved latest cookies for platform: ${platformId}`);
+      return this.cookies[platformId];
+    } catch (error) {
+      logger.error(`Error getting latest cookies for platform ${platformId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Refresh cookies for a specific platform
+   * @param {string} platformId - Platform identifier (e.g., 'motonet', 'sryhma')
+   * @returns {Promise<boolean>} - Success status
+   */
+  async refreshCookies(platformId) {
+    try {
+      logger.info(`Refreshing cookies for platform: ${platformId}`);
+      
+      // For now, just re-initialize from environment variables
+      // In a production system, this would use a headless browser to refresh cookies
+      const initialized = await this.initializeCookies(platformId);
+      
+      if (!initialized) {
+        logger.error(`Failed to refresh cookies for ${platformId}`);
+        return false;
+      }
+      
+      logger.info(`Successfully refreshed cookies for ${platformId}`);
+      return true;
+    } catch (error) {
+      logger.error(`Error refreshing cookies for platform ${platformId}: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Set up automatic cookie refresh for a platform
+   * @param {string} platformId - Platform identifier (e.g., 'motonet', 'sryhma')
+   * @param {number} intervalMs - Refresh interval in milliseconds
+   */
+  setupAutoRefresh(platformId, intervalMs) {
+    // Clear any existing timer
+    if (this.refreshTimers[platformId]) {
+      clearInterval(this.refreshTimers[platformId]);
+    }
+    
+    // Set up new timer
+    this.refreshTimers[platformId] = setInterval(async () => {
+      try {
+        await this.refreshCookies(platformId);
+      } catch (error) {
+        logger.error(`Auto-refresh failed for ${platformId}: ${error.message}`);
+      }
+    }, intervalMs);
+    
+    logger.info(`Auto-refresh set up for ${platformId} every ${intervalMs}ms`);
+  }
+
+  /**
+   * Get the maximum age for cookies of a specific platform
+   * @param {string} platformId - Platform identifier (e.g., 'motonet', 'sryhma')
+   * @returns {number} - Cookie max age in milliseconds
+   */
+  getCookieMaxAge(platformId) {
+    const envVarName = `${platformId.toUpperCase()}_COOKIE_MAX_AGE`;
+    const defaultMaxAge = 24 * 60 * 60 * 1000; // 24 hours
+    
+    return parseInt(process.env[envVarName], 10) || defaultMaxAge;
+  }
+
+  /**
+   * Encrypt sensitive data
+   * @param {string} data - Data to encrypt
+   * @returns {string} - Encrypted data
+   */
+  encrypt(data) {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(this.encryptionKey), iv);
+    let encrypted = cipher.update(data);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    return iv.toString('hex') + ':' + encrypted.toString('hex');
+  }
+
+  /**
+   * Decrypt sensitive data
+   * @param {string} data - Data to decrypt
+   * @returns {string} - Decrypted data
+   */
+  decrypt(data) {
+    const textParts = data.split(':');
+    const iv = Buffer.from(textParts.shift(), 'hex');
+    const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(this.encryptionKey), iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+  }
+
+  /**
+   * Get cookie status for all platforms
+   * @returns {Object} - Status object with platform status
+   */
+  getStatus() {
+    const status = {};
+    
+    for (const platformId in this.cookies) {
+      const cookieData = this.cookies[platformId];
+      status[platformId] = {
+        exists: !!cookieData,
+        expired: cookieData ? cookieData.expiresAt < Date.now() : true,
+        expiresAt: cookieData ? new Date(cookieData.expiresAt).toISOString() : null,
+        autoRefresh: !!this.refreshTimers[platformId]
+      };
+    }
+    
+    return status;
   }
 }
 
