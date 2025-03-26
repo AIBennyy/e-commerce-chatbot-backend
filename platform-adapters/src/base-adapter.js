@@ -95,28 +95,28 @@ class BaseECommerceAdapter {
     
     throw enhancedError;
   }
+
+  /**
+   * Get the URL for the platform's shopping cart
+   * @returns {Promise<string>} - URL to the shopping cart
+   */
+  async getCartUrl() {
+    try {
+      // Get cookies to ensure the session is maintained
+      await this.getCookies();
+      
+      // Check if cartPath is defined
+      if (!this.cartPath) {
+        throw new Error(`Cart path not defined for ${this.platformId}`);
+      }
+      
+      // Return the full cart URL
+      return `${this.baseUrl}${this.cartPath}`;
+    } catch (error) {
+      console.error('Error getting cart URL', { error, platformId: this.platformId });
+      throw error;
+    }
+  }
 }
 
 module.exports = BaseECommerceAdapter;
-
-/**
- * Get the URL for the platform's shopping cart
- * @returns {Promise<string>} - URL to the shopping cart
- */
-async getCartUrl() {
-  try {
-    // Get cookies to ensure the session is maintained
-    await this.getCookies();
-    
-    // Check if cartPath is defined
-    if (!this.cartPath) {
-      throw new Error(`Cart path not defined for ${this.platformId}`);
-    }
-    
-    // Return the full cart URL
-    return `${this.baseUrl}${this.cartPath}`;
-  } catch (error) {
-    console.error('Error getting cart URL', { error, platformId: this.platformId });
-    throw error;
-  }
-}
