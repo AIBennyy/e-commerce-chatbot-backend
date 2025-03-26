@@ -45,6 +45,25 @@ class MotonetAdapter extends BaseECommerceAdapter {
   }
 
   /**
+   * Get standard headers for API requests
+   * @param {string} cookieString - Cookie string
+   * @param {string} referer - Referer URL
+   * @returns {Object} - Headers object
+   */
+  getStandardHeaders(cookieString, referer = this.baseUrl) {
+    return {
+      'Cookie': cookieString,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
+      'Referer': referer,
+      'Origin': this.baseUrl,
+      'Connection': 'keep-alive',
+      'X-Requested-With': 'XMLHttpRequest'
+    };
+  }
+
+  /**
    * Search for products on Motonet
    * @param {string} query - Search query
    * @param {Object} options - Search options (pagination, filters, etc.)
@@ -55,19 +74,14 @@ class MotonetAdapter extends BaseECommerceAdapter {
       console.log(`Searching for products with query: "${query}"`);
       const cookies = await this.getCookies();
       
+      if (!cookies || !cookies.cookieString) {
+        throw new Error('No valid cookies found for Motonet');
+      }
+      
       const response = await axios({
         method: 'get',
         url: `${this.baseUrl}/fi/search`,
-        headers: {
-          'Cookie': cookies.cookieString,
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
-          'Referer': this.baseUrl,
-          'Origin': this.baseUrl,
-          'Connection': 'keep-alive'
-        },
+        headers: this.getStandardHeaders(cookies.cookieString),
         params: {
           q: query,
           page: options.page || 1,
@@ -104,6 +118,10 @@ class MotonetAdapter extends BaseECommerceAdapter {
       console.log(`Getting details for product ID: ${productId}`);
       const cookies = await this.getCookies();
       
+      if (!cookies || !cookies.cookieString) {
+        throw new Error('No valid cookies found for Motonet');
+      }
+      
       // Ensure product ID is in the correct format
       const formattedProductId = this.formatProductId(productId);
       console.log(`Formatted product ID: ${formattedProductId}`);
@@ -111,16 +129,7 @@ class MotonetAdapter extends BaseECommerceAdapter {
       const response = await axios({
         method: 'get',
         url: `${this.baseUrl}/fi/tuote/${formattedProductId}`,
-        headers: {
-          'Cookie': cookies.cookieString,
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
-          'Referer': this.baseUrl,
-          'Origin': this.baseUrl,
-          'Connection': 'keep-alive'
-        },
+        headers: this.getStandardHeaders(cookies.cookieString),
         timeout: 10000
       });
       
@@ -152,68 +161,68 @@ class MotonetAdapter extends BaseECommerceAdapter {
       const formattedProductId = this.formatProductId(productId);
       console.log(`Formatted product ID: ${formattedProductId}`);
       
-      // Use the actual Motonet cart API endpoint
-      const response = await axios({
-        method: 'post',
-        url: `${this.baseUrl}/fi/cart/add`,
-        headers: {
-          'Cookie': cookies.cookieString,
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
-          'Referer': `${this.baseUrl}/fi/tuote/${formattedProductId}`,
-          'Origin': this.baseUrl,
-          'X-Requested-With': 'XMLHttpRequest',
-          'Connection': 'keep-alive'
-        },
-        data: {
-          productId: formattedProductId,
-          quantity: quantity
-        },
-        timeout: 10000
-      });
-      
-      console.log(`Add to cart response for ${formattedProductId}:`, response.data);
-      
-      // Also track the add to cart event for analytics (but don't fail if this fails)
+      // First, try the direct cart API endpoint
+      console.log(`Attempting to add product ${formattedProductId} to cart using direct cart API`);
       try {
-        await axios({
+        const cartResponse = await axios({
           method: 'post',
-          url: `${this.apiBaseUrl}/tracking/add-to-cart`,
+          url: `${this.baseUrl}/fi/cart/add`,
           headers: {
-            'Cookie': cookies.cookieString,
-            'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
-            'Referer': `${this.baseUrl}/fi/tuote/${formattedProductId}`,
-            'Origin': this.baseUrl,
-            'Connection': 'keep-alive'
+            ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
+            'Content-Type': 'application/json'
           },
           data: {
-            currency: "EUR",
-            value: 0,
-            items: [
-              {
-                item_id: formattedProductId,
-                product_id: formattedProductId
-              }
-            ],
-            coupons: []
+            productId: formattedProductId,
+            quantity: quantity
           },
-          timeout: 5000
+          timeout: 10000
         });
-      } catch (trackingError) {
-        // Tracking errors shouldn't fail the whole operation
-        console.warn('Tracking request failed:', trackingError.message);
+        
+        console.log(`Direct cart API response for ${formattedProductId}:`, cartResponse.data);
+        
+        // If successful, return the result
+        if (cartResponse.status === 200 || cartResponse.status === 201) {
+          return {
+            success: true,
+            message: `Added ${quantity} of product ${formattedProductId} to cart`,
+            data: cartResponse.data
+          };
+        }
+      } catch (cartError) {
+        console.error(`Error with direct cart API for ${formattedProductId}:`, cartError);
+        console.log(`Falling back to alternative method for ${formattedProductId}`);
       }
       
-      return {
-        success: true,
-        message: `Added ${quantity} of product ${formattedProductId} to cart`,
-        data: response.data
-      };
+      // If direct cart API fails, try the alternative method (form submission)
+      console.log(`Attempting to add product ${formattedProductId} to cart using form submission`);
+      try {
+        const formResponse = await axios({
+          method: 'post',
+          url: `${this.baseUrl}/fi/tuote/${formattedProductId}`,
+          headers: {
+            ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          data: `quantity=${quantity}&add_to_cart=true`,
+          timeout: 10000
+        });
+        
+        console.log(`Form submission response for ${formattedProductId}:`, formResponse.status);
+        
+        // If successful, return the result
+        if (formResponse.status === 200 || formResponse.status === 201 || formResponse.status === 302) {
+          return {
+            success: true,
+            message: `Added ${quantity} of product ${formattedProductId} to cart using form submission`,
+            data: { status: formResponse.status }
+          };
+        }
+      } catch (formError) {
+        console.error(`Error with form submission for ${formattedProductId}:`, formError);
+      }
+      
+      // If both methods fail, throw an error
+      throw new Error(`Failed to add product ${formattedProductId} to cart using all available methods`);
     } catch (error) {
       console.error(`Error adding product ${productId} to cart:`, error);
       
@@ -242,19 +251,14 @@ class MotonetAdapter extends BaseECommerceAdapter {
       console.log('Getting cart contents');
       const cookies = await this.getCookies();
       
+      if (!cookies || !cookies.cookieString) {
+        throw new Error('No valid cookies found for Motonet');
+      }
+      
       const response = await axios({
         method: 'get',
         url: `${this.baseUrl}/fi/cart`,
-        headers: {
-          'Cookie': cookies.cookieString,
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
-          'Referer': this.baseUrl,
-          'Origin': this.baseUrl,
-          'Connection': 'keep-alive'
-        },
+        headers: this.getStandardHeaders(cookies.cookieString),
         timeout: 10000
       });
       
@@ -305,19 +309,14 @@ class MotonetAdapter extends BaseECommerceAdapter {
       console.log('Initiating checkout');
       const cookies = await this.getCookies();
       
+      if (!cookies || !cookies.cookieString) {
+        throw new Error('No valid cookies found for Motonet');
+      }
+      
       const response = await axios({
         method: 'post',
         url: `${this.baseUrl}/fi/checkout/initiate`,
-        headers: {
-          'Cookie': cookies.cookieString,
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
-          'Referer': `${this.baseUrl}/fi/ostoskori`,
-          'Origin': this.baseUrl,
-          'Connection': 'keep-alive'
-        },
+        headers: this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/ostoskori`),
         data: options,
         timeout: 10000
       });
