@@ -52,28 +52,44 @@ class MotonetAdapter extends BaseECommerceAdapter {
    */
   async searchProducts(query, options = {}) {
     try {
+      console.log(`Searching for products with query: "${query}"`);
       const cookies = await this.getCookies();
       
       const response = await axios({
         method: 'get',
-        url: `${this.apiBaseUrl}/search`,
+        url: `${this.baseUrl}/fi/search`,
         headers: {
           'Cookie': cookies.cookieString,
           'Content-Type': 'application/json',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
           'Referer': this.baseUrl,
-          'Origin': this.baseUrl
+          'Origin': this.baseUrl,
+          'Connection': 'keep-alive'
         },
         params: {
           q: query,
           page: options.page || 1,
           limit: options.limit || 20,
           ...options.filters
-        }
+        },
+        timeout: 10000
       });
       
-      return response.data.products || [];
+      console.log(`Search results for "${query}":`, response.data);
+      
+      // Extract products from the response
+      let products = [];
+      if (response.data && response.data.products) {
+        products = response.data.products;
+      } else if (response.data && response.data.items) {
+        products = response.data.items;
+      }
+      
+      return products;
     } catch (error) {
+      console.error(`Error searching for products with query "${query}":`, error);
       this.handleError(error, 'searchProducts');
     }
   }
@@ -85,26 +101,35 @@ class MotonetAdapter extends BaseECommerceAdapter {
    */
   async getProductDetails(productId) {
     try {
+      console.log(`Getting details for product ID: ${productId}`);
       const cookies = await this.getCookies();
       
       // Ensure product ID is in the correct format
       const formattedProductId = this.formatProductId(productId);
+      console.log(`Formatted product ID: ${formattedProductId}`);
       
       const response = await axios({
         method: 'get',
-        url: `${this.apiBaseUrl}/products/${formattedProductId}`,
+        url: `${this.baseUrl}/fi/tuote/${formattedProductId}`,
         headers: {
           'Cookie': cookies.cookieString,
           'Content-Type': 'application/json',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
           'Referer': this.baseUrl,
-          'Origin': this.baseUrl
-        }
+          'Origin': this.baseUrl,
+          'Connection': 'keep-alive'
+        },
+        timeout: 10000
       });
       
+      console.log(`Product details for ${formattedProductId}:`, response.data);
       return response.data;
     } catch (error) {
-      this.handleError(error, 'getProductDetails');
+      console.error(`Error getting product details for ID ${productId}:`, error);
+      // Don't throw here, just return a minimal object so addToCart can continue
+      return { price: 0, id: productId };
     }
   }
 
@@ -116,19 +141,16 @@ class MotonetAdapter extends BaseECommerceAdapter {
    */
   async addToCart(productId, quantity = 1) {
     try {
+      console.log(`Adding product ${productId} to cart (quantity: ${quantity})`);
       const cookies = await this.getCookies();
+      
+      if (!cookies || !cookies.cookieString) {
+        throw new Error('No valid cookies found for Motonet');
+      }
       
       // Ensure product ID is in the correct format
       const formattedProductId = this.formatProductId(productId);
-      
-      // First, try to get product details to determine price and other info
-      let productDetails;
-      try {
-        productDetails = await this.getProductDetails(formattedProductId);
-      } catch (error) {
-        console.warn(`Could not get product details for ${formattedProductId}, using default values`);
-        productDetails = { price: 0 };
-      }
+      console.log(`Formatted product ID: ${formattedProductId}`);
       
       // Use the actual Motonet cart API endpoint
       const response = await axios({
@@ -138,17 +160,23 @@ class MotonetAdapter extends BaseECommerceAdapter {
           'Cookie': cookies.cookieString,
           'Content-Type': 'application/json',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
           'Referer': `${this.baseUrl}/fi/tuote/${formattedProductId}`,
           'Origin': this.baseUrl,
-          'X-Requested-With': 'XMLHttpRequest'
+          'X-Requested-With': 'XMLHttpRequest',
+          'Connection': 'keep-alive'
         },
         data: {
           productId: formattedProductId,
           quantity: quantity
-        }
+        },
+        timeout: 10000
       });
       
-      // Also track the add to cart event for analytics
+      console.log(`Add to cart response for ${formattedProductId}:`, response.data);
+      
+      // Also track the add to cart event for analytics (but don't fail if this fails)
       try {
         await axios({
           method: 'post',
@@ -157,12 +185,15 @@ class MotonetAdapter extends BaseECommerceAdapter {
             'Cookie': cookies.cookieString,
             'Content-Type': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
             'Referer': `${this.baseUrl}/fi/tuote/${formattedProductId}`,
-            'Origin': this.baseUrl
+            'Origin': this.baseUrl,
+            'Connection': 'keep-alive'
           },
           data: {
             currency: "EUR",
-            value: productDetails.price || 0,
+            value: 0,
             items: [
               {
                 item_id: formattedProductId,
@@ -170,7 +201,8 @@ class MotonetAdapter extends BaseECommerceAdapter {
               }
             ],
             coupons: []
-          }
+          },
+          timeout: 5000
         });
       } catch (trackingError) {
         // Tracking errors shouldn't fail the whole operation
@@ -183,6 +215,20 @@ class MotonetAdapter extends BaseECommerceAdapter {
         data: response.data
       };
     } catch (error) {
+      console.error(`Error adding product ${productId} to cart:`, error);
+      
+      // Provide detailed error information
+      const errorDetails = {
+        message: error.message,
+        response: error.response ? {
+          status: error.response.status,
+          data: error.response.data
+        } : null,
+        request: error.request ? 'Request was made but no response received' : null
+      };
+      
+      console.error('Error details:', JSON.stringify(errorDetails, null, 2));
+      
       this.handleError(error, 'addToCart');
     }
   }
@@ -193,6 +239,7 @@ class MotonetAdapter extends BaseECommerceAdapter {
    */
   async getCartContents() {
     try {
+      console.log('Getting cart contents');
       const cookies = await this.getCookies();
       
       const response = await axios({
@@ -202,14 +249,49 @@ class MotonetAdapter extends BaseECommerceAdapter {
           'Cookie': cookies.cookieString,
           'Content-Type': 'application/json',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
           'Referer': this.baseUrl,
-          'Origin': this.baseUrl
-        }
+          'Origin': this.baseUrl,
+          'Connection': 'keep-alive'
+        },
+        timeout: 10000
       });
       
+      console.log('Cart contents:', response.data);
       return response.data;
     } catch (error) {
+      console.error('Error getting cart contents:', error);
       this.handleError(error, 'getCartContents');
+    }
+  }
+
+  /**
+   * Get the URL for the platform's shopping cart
+   * @returns {Promise<string>} - URL to the shopping cart
+   */
+  async getCartUrl() {
+    try {
+      console.log('Getting cart URL');
+      // Get cookies to ensure the session is maintained
+      const cookies = await this.getCookies();
+      
+      if (!cookies || !cookies.cookieString) {
+        throw new Error('No valid cookies found for Motonet');
+      }
+      
+      // Check if cartPath is defined
+      if (!this.cartPath) {
+        throw new Error(`Cart path not defined for ${this.platformId}`);
+      }
+      
+      // Return the full cart URL
+      const cartUrl = `${this.baseUrl}${this.cartPath}`;
+      console.log(`Cart URL: ${cartUrl}`);
+      return cartUrl;
+    } catch (error) {
+      console.error('Error getting cart URL:', error);
+      throw error;
     }
   }
 
@@ -220,6 +302,7 @@ class MotonetAdapter extends BaseECommerceAdapter {
    */
   async checkout(options = {}) {
     try {
+      console.log('Initiating checkout');
       const cookies = await this.getCookies();
       
       const response = await axios({
@@ -229,12 +312,17 @@ class MotonetAdapter extends BaseECommerceAdapter {
           'Cookie': cookies.cookieString,
           'Content-Type': 'application/json',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9,fi;q=0.8',
           'Referer': `${this.baseUrl}/fi/ostoskori`,
-          'Origin': this.baseUrl
+          'Origin': this.baseUrl,
+          'Connection': 'keep-alive'
         },
-        data: options
+        data: options,
+        timeout: 10000
       });
       
+      console.log('Checkout response:', response.data);
       return {
         success: true,
         message: 'Checkout initiated',
@@ -242,6 +330,7 @@ class MotonetAdapter extends BaseECommerceAdapter {
         data: response.data
       };
     } catch (error) {
+      console.error('Error initiating checkout:', error);
       this.handleError(error, 'checkout');
     }
   }
