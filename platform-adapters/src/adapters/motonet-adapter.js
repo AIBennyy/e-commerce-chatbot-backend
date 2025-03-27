@@ -1,7 +1,4 @@
-/**
- * Motonet E-Commerce Platform Adapter
- * Implements the platform-specific logic for Motonet
- */
+// Modified version of motonet-adapter.js with improved product ID handling and parameter naming
 const axios = require('axios');
 const BaseECommerceAdapter = require('../base-adapter');
 
@@ -161,9 +158,10 @@ class MotonetAdapter extends BaseECommerceAdapter {
       const formattedProductId = this.formatProductId(productId);
       console.log(`Formatted product ID: ${formattedProductId}`);
       
-      // First, try the direct cart API endpoint
+      // First, try the direct cart API endpoint with form-urlencoded format
       console.log(`Attempting to add product ${formattedProductId} to cart using direct cart API with form-urlencoded data`);
       try {
+        // Try with 'id' parameter (based on testing results)
         const cartResponse = await axios({
           method: 'post',
           url: `${this.baseUrl}/fi/cart/add`,
@@ -171,7 +169,7 @@ class MotonetAdapter extends BaseECommerceAdapter {
             ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
             'Content-Type': 'application/x-www-form-urlencoded'
           },
-          data: `productId=${formattedProductId}&quantity=${quantity}`,
+          data: `id=${formattedProductId}&quantity=${quantity}`,
           timeout: 10000
         });
         
@@ -186,8 +184,36 @@ class MotonetAdapter extends BaseECommerceAdapter {
           };
         }
       } catch (cartError) {
-        console.error(`Error with direct cart API for ${formattedProductId}:`, cartError);
-        console.log(`Falling back to alternative method for ${formattedProductId}`);
+        console.error(`Error with direct cart API using 'id' parameter for ${formattedProductId}:`, cartError);
+        console.log(`Trying with 'productId' parameter for ${formattedProductId}`);
+        
+        // If 'id' parameter fails, try with 'productId' parameter
+        try {
+          const cartResponse2 = await axios({
+            method: 'post',
+            url: `${this.baseUrl}/fi/cart/add`,
+            headers: {
+              ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            data: `productId=${formattedProductId}&quantity=${quantity}`,
+            timeout: 10000
+          });
+          
+          console.log(`Direct cart API response with 'productId' parameter for ${formattedProductId}:`, cartResponse2.data);
+          
+          // If successful, return the result
+          if (cartResponse2.status === 200 || cartResponse2.status === 201) {
+            return {
+              success: true,
+              message: `Added ${quantity} of product ${formattedProductId} to cart using 'productId' parameter`,
+              data: cartResponse2.data
+            };
+          }
+        } catch (cartError2) {
+          console.error(`Error with direct cart API using 'productId' parameter for ${formattedProductId}:`, cartError2);
+          console.log(`Falling back to alternative method for ${formattedProductId}`);
+        }
       }
       
       // If direct cart API fails, try the alternative method (form submission)
