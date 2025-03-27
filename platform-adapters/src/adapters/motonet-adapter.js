@@ -162,16 +162,16 @@ class MotonetAdapter extends BaseECommerceAdapter {
       console.log(`Formatted product ID: ${formattedProductId}`);
       
       // First, try the direct cart API endpoint
-      console.log(`Attempting to add product ${formattedProductId} to cart using direct cart API`);
+      console.log(`Attempting to add product ${formattedProductId} to cart using direct cart API with form-urlencoded data`);
       try {
         const cartResponse = await axios({
           method: 'post',
           url: `${this.baseUrl}/fi/cart/add`,
-          headers: this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
-          data: {
-            productId: formattedProductId,
-            quantity: quantity
+          headers: {
+            ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
+            'Content-Type': 'application/x-www-form-urlencoded'
           },
+          data: `productId=${formattedProductId}&quantity=${quantity}`,
           timeout: 10000
         });
         
