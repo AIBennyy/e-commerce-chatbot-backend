@@ -127,6 +127,34 @@ function logError(error, platform, operation, context = {}) {
   }
 }
 
+/**
+ * Log an operation with context information
+ * @param {string} platform - The platform where the operation occurred
+ * @param {string} operation - The operation being performed
+ * @param {Object} context - Additional context information
+ */
+function logOperation(platform, operation, context = {}) {
+  const operationInfo = {
+    timestamp: new Date(),
+    platform,
+    operation,
+    ...context
+  };
+  
+  // Log to Winston
+  logger.info(`Operation ${operation} on ${platform}`, operationInfo);
+  
+  // Notify dashboard API if available
+  try {
+    const dashboardApi = require('./dashboard-api');
+    if (dashboardApi && typeof dashboardApi.logOperation === 'function') {
+      dashboardApi.logOperation(platform, operation, context);
+    }
+  } catch (e) {
+    // Dashboard API not available, ignore
+  }
+}
+
 function logSuccess(platform, operation, responseTime, context = {}) {
   const successInfo = {
     timestamp: new Date(),
@@ -210,6 +238,7 @@ function createRequestLoggerMiddleware() {
 module.exports = {
   logger,
   logError,
+  logOperation,
   logSuccess,
   getRecentErrors,
   createErrorMiddleware,
