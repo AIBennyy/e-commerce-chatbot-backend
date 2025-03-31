@@ -12,6 +12,7 @@ class CookieManagementSystem {
     this.cookies = {};
     this.refreshTimers = {};
     this.encryptionKey = process.env.ENCRYPTION_KEY || 'default-encryption-key';
+    this.lastRefreshTime = {};
   }
 
   /**
@@ -38,6 +39,9 @@ class CookieManagementSystem {
         timestamp: Date.now(),
         expiresAt: Date.now() + this.getCookieMaxAge(platformId)
       };
+      
+      // Record last refresh time
+      this.lastRefreshTime[platformId] = Date.now();
       
       logger.info(`Cookies initialized for platform: ${platformId}`);
       return true;
@@ -66,9 +70,17 @@ class CookieManagementSystem {
         }
       }
       
-      // Check if cookies are expired
-      if (this.cookies[platformId].expiresAt < Date.now()) {
-        logger.info(`Cookies for ${platformId} are expired, refreshing...`);
+      // Check if cookies are expired or close to expiration (within 10 minutes)
+      const nearExpiration = this.cookies[platformId].expiresAt < (Date.now() + 10 * 60 * 1000);
+      if (this.cookies[platformId].expiresAt < Date.now() || nearExpiration) {
+        logger.info(`Cookies for ${platformId} are expired or near expiration, refreshing...`);
+        await this.refreshCookies(platformId);
+      }
+      
+      // Check if it's been more than 30 minutes since last refresh for critical operations
+      const thirtyMinutesAgo = Date.now() - (30 * 60 * 1000);
+      if (this.lastRefreshTime[platformId] < thirtyMinutesAgo) {
+        logger.info(`It's been more than 30 minutes since last cookie refresh for ${platformId}, refreshing...`);
         await this.refreshCookies(platformId);
       }
       
@@ -98,10 +110,28 @@ class CookieManagementSystem {
         return false;
       }
       
+      // Update last refresh time
+      this.lastRefreshTime[platformId] = Date.now();
+      
       logger.info(`Successfully refreshed cookies for ${platformId}`);
       return true;
     } catch (error) {
       logger.error(`Error refreshing cookies for platform ${platformId}: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Force refresh cookies for a specific platform regardless of expiration
+   * @param {string} platformId - Platform identifier (e.g., 'motonet', 'sryhma')
+   * @returns {Promise<boolean>} - Success status
+   */
+  async forceRefreshCookies(platformId) {
+    try {
+      logger.info(`Force refreshing cookies for platform: ${platformId}`);
+      return await this.refreshCookies(platformId);
+    } catch (error) {
+      logger.error(`Error force refreshing cookies for platform ${platformId}: ${error.message}`);
       return false;
     }
   }
@@ -182,7 +212,8 @@ class CookieManagementSystem {
         exists: !!cookieData,
         expired: cookieData ? cookieData.expiresAt < Date.now() : true,
         expiresAt: cookieData ? new Date(cookieData.expiresAt).toISOString() : null,
-        autoRefresh: !!this.refreshTimers[platformId]
+        autoRefresh: !!this.refreshTimers[platformId],
+        lastRefreshed: this.lastRefreshTime[platformId] ? new Date(this.lastRefreshTime[platformId]).toISOString() : null
       };
     }
     

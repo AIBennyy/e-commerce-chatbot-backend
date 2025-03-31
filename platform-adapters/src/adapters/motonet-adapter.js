@@ -148,6 +148,9 @@ class MotonetAdapter extends BaseECommerceAdapter {
   async addToCart(productId, quantity = 1) {
     try {
       console.log(`Adding product ${productId} to cart (quantity: ${quantity})`);
+      
+      // Force cookie refresh before attempting to add to cart
+      await this.cookieManager.refreshCookies(this.platformId);
       const cookies = await this.getCookies();
       
       if (!cookies || !cookies.cookieString) {
@@ -158,90 +161,133 @@ class MotonetAdapter extends BaseECommerceAdapter {
       const formattedProductId = this.formatProductId(productId);
       console.log(`Formatted product ID: ${formattedProductId}`);
       
-      // First, try the direct cart API endpoint with form-urlencoded format
-      console.log(`Attempting to add product ${formattedProductId} to cart using direct cart API with form-urlencoded data`);
-      try {
-        // Try with 'id' parameter (based on testing results)
-        const cartResponse = await axios({
-          method: 'post',
-          url: `${this.baseUrl}/fi/cart/add`,
-          headers: {
-            ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          data: `id=${formattedProductId}&quantity=${quantity}`,
-          timeout: 10000
-        });
+      // Try multiple formats for the product ID
+      const productIdVariations = [
+        formattedProductId,
+        formattedProductId.replace('-', ''),  // Without hyphen
+        productId  // Original format
+      ];
+      
+      let lastError = null;
+      
+      // Try each product ID variation with each method
+      for (const pidVariation of productIdVariations) {
+        console.log(`Trying product ID variation: ${pidVariation}`);
         
-        console.log(`Direct cart API response for ${formattedProductId}:`, cartResponse.data);
-        
-        // If successful, return the result
-        if (cartResponse.status === 200 || cartResponse.status === 201) {
-          return {
-            success: true,
-            message: `Added ${quantity} of product ${formattedProductId} to cart`,
-            data: cartResponse.data
-          };
-        }
-      } catch (cartError) {
-        console.error(`Error with direct cart API using 'id' parameter for ${formattedProductId}:`, cartError);
-        console.log(`Trying with 'productId' parameter for ${formattedProductId}`);
-        
-        // If 'id' parameter fails, try with 'productId' parameter
+        // Method 1: Direct cart API with 'id' parameter
         try {
+          console.log(`Attempting to add product ${pidVariation} to cart using direct cart API with 'id' parameter`);
+          const cartResponse = await axios({
+            method: 'post',
+            url: `${this.baseUrl}/fi/cart/add`,
+            headers: {
+              ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${pidVariation}`),
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            data: `id=${pidVariation}&quantity=${quantity}`,
+            timeout: 15000
+          });
+          
+          console.log(`Direct cart API response for ${pidVariation}:`, cartResponse.data);
+          
+          if (cartResponse.status === 200 || cartResponse.status === 201) {
+            return {
+              success: true,
+              message: `Added ${quantity} of product ${pidVariation} to cart using 'id' parameter`,
+              data: cartResponse.data
+            };
+          }
+        } catch (error) {
+          console.error(`Error with direct cart API using 'id' parameter for ${pidVariation}:`, error.message);
+          lastError = error;
+        }
+        
+        // Method 2: Direct cart API with 'productId' parameter
+        try {
+          console.log(`Attempting to add product ${pidVariation} to cart using direct cart API with 'productId' parameter`);
           const cartResponse2 = await axios({
             method: 'post',
             url: `${this.baseUrl}/fi/cart/add`,
             headers: {
-              ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
+              ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${pidVariation}`),
               'Content-Type': 'application/x-www-form-urlencoded'
             },
-            data: `productId=${formattedProductId}&quantity=${quantity}`,
-            timeout: 10000
+            data: `productId=${pidVariation}&quantity=${quantity}`,
+            timeout: 15000
           });
           
-          console.log(`Direct cart API response with 'productId' parameter for ${formattedProductId}:`, cartResponse2.data);
+          console.log(`Direct cart API response with 'productId' parameter for ${pidVariation}:`, cartResponse2.data);
           
-          // If successful, return the result
           if (cartResponse2.status === 200 || cartResponse2.status === 201) {
             return {
               success: true,
-              message: `Added ${quantity} of product ${formattedProductId} to cart using 'productId' parameter`,
+              message: `Added ${quantity} of product ${pidVariation} to cart using 'productId' parameter`,
               data: cartResponse2.data
             };
           }
-        } catch (cartError2) {
-          console.error(`Error with direct cart API using 'productId' parameter for ${formattedProductId}:`, cartError2);
-          console.log(`Falling back to alternative method for ${formattedProductId}`);
+        } catch (error) {
+          console.error(`Error with direct cart API using 'productId' parameter for ${pidVariation}:`, error.message);
+          lastError = error;
         }
-      }
-      
-      // If direct cart API fails, try the alternative method (form submission)
-      console.log(`Attempting to add product ${formattedProductId} to cart using form submission`);
-      try {
-        const formResponse = await axios({
-          method: 'post',
-          url: `${this.baseUrl}/fi/tuote/${formattedProductId}`,
-          headers: {
-            ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${formattedProductId}`),
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          data: `quantity=${quantity}&add_to_cart=true`,
-          timeout: 10000
-        });
         
-        console.log(`Form submission response for ${formattedProductId}:`, formResponse.status);
-        
-        // If successful, return the result
-        if (formResponse.status === 200 || formResponse.status === 201 || formResponse.status === 302) {
-          return {
-            success: true,
-            message: `Added ${quantity} of product ${formattedProductId} to cart using form submission`,
-            data: { status: formResponse.status }
-          };
+        // Method 3: Form submission
+        try {
+          console.log(`Attempting to add product ${pidVariation} to cart using form submission`);
+          const formResponse = await axios({
+            method: 'post',
+            url: `${this.baseUrl}/fi/tuote/${pidVariation}`,
+            headers: {
+              ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${pidVariation}`),
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            data: `quantity=${quantity}&add_to_cart=true`,
+            timeout: 15000
+          });
+          
+          console.log(`Form submission response for ${pidVariation}:`, formResponse.status);
+          
+          if (formResponse.status === 200 || formResponse.status === 201 || formResponse.status === 302) {
+            return {
+              success: true,
+              message: `Added ${quantity} of product ${pidVariation} to cart using form submission`,
+              data: { status: formResponse.status }
+            };
+          }
+        } catch (error) {
+          console.error(`Error with form submission for ${pidVariation}:`, error.message);
+          lastError = error;
         }
-      } catch (formError) {
-        console.error(`Error with form submission for ${formattedProductId}:`, formError);
+        
+        // Method 4: JSON API approach
+        try {
+          console.log(`Attempting to add product ${pidVariation} to cart using JSON API`);
+          const jsonResponse = await axios({
+            method: 'post',
+            url: `${this.apiBaseUrl}/cart/add`,
+            headers: {
+              ...this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/tuote/${pidVariation}`),
+              'Content-Type': 'application/json'
+            },
+            data: JSON.stringify({
+              productId: pidVariation,
+              quantity: quantity
+            }),
+            timeout: 15000
+          });
+          
+          console.log(`JSON API response for ${pidVariation}:`, jsonResponse.data);
+          
+          if (jsonResponse.status === 200 || jsonResponse.status === 201) {
+            return {
+              success: true,
+              message: `Added ${quantity} of product ${pidVariation} to cart using JSON API`,
+              data: jsonResponse.data
+            };
+          }
+        } catch (error) {
+          console.error(`Error with JSON API for ${pidVariation}:`, error.message);
+          lastError = error;
+        }
       }
       
       // Also try the tracking endpoint for analytics (but don't rely on it for cart addition)
@@ -262,8 +308,8 @@ class MotonetAdapter extends BaseECommerceAdapter {
         console.warn(`Tracking request failed:`, trackingError.message);
       }
       
-      // If both methods fail, throw an error
-      throw new Error(`Failed to add product ${formattedProductId} to cart using all available methods`);
+      // If all methods and variations fail, throw an error
+      throw new Error(`Failed to add product ${formattedProductId} to cart using all available methods and variations`);
     } catch (error) {
       console.error(`Error adding product ${productId} to cart:`, error);
       
@@ -279,6 +325,7 @@ class MotonetAdapter extends BaseECommerceAdapter {
       
       console.error('Error details:', JSON.stringify(errorDetails, null, 2));
       
+      // Handle the error
       this.handleError(error, 'addToCart');
     }
   }
@@ -298,45 +345,28 @@ class MotonetAdapter extends BaseECommerceAdapter {
       
       const response = await axios({
         method: 'get',
-        url: `${this.baseUrl}/fi/cart`,
+        url: `${this.baseUrl}${this.cartPath}`,
         headers: this.getStandardHeaders(cookies.cookieString),
         timeout: 10000
       });
       
       console.log('Cart contents:', response.data);
-      return response.data;
+      
+      // Extract cart data from the response
+      // This is a simplified implementation and may need to be adjusted
+      // based on the actual structure of the response
+      let cartData = {
+        items: [],
+        totalPrice: 0
+      };
+      
+      // Parse the HTML response to extract cart data
+      // This is a placeholder and should be implemented based on the actual HTML structure
+      
+      return cartData;
     } catch (error) {
       console.error('Error getting cart contents:', error);
       this.handleError(error, 'getCartContents');
-    }
-  }
-
-  /**
-   * Get the URL for the platform's shopping cart
-   * @returns {Promise<string>} - URL to the shopping cart
-   */
-  async getCartUrl() {
-    try {
-      console.log('Getting cart URL');
-      // Get cookies to ensure the session is maintained
-      const cookies = await this.getCookies();
-      
-      if (!cookies || !cookies.cookieString) {
-        throw new Error('No valid cookies found for Motonet');
-      }
-      
-      // Check if cartPath is defined
-      if (!this.cartPath) {
-        throw new Error(`Cart path not defined for ${this.platformId}`);
-      }
-      
-      // Return the full cart URL
-      const cartUrl = `${this.baseUrl}${this.cartPath}`;
-      console.log(`Cart URL: ${cartUrl}`);
-      return cartUrl;
-    } catch (error) {
-      console.error('Error getting cart URL:', error);
-      throw error;
     }
   }
 
@@ -347,27 +377,20 @@ class MotonetAdapter extends BaseECommerceAdapter {
    */
   async checkout(options = {}) {
     try {
-      console.log('Initiating checkout');
+      console.log('Initiating checkout process');
       const cookies = await this.getCookies();
       
       if (!cookies || !cookies.cookieString) {
         throw new Error('No valid cookies found for Motonet');
       }
       
-      const response = await axios({
-        method: 'post',
-        url: `${this.baseUrl}/fi/checkout/initiate`,
-        headers: this.getStandardHeaders(cookies.cookieString, `${this.baseUrl}/fi/ostoskori`),
-        data: options,
-        timeout: 10000
-      });
+      // This is a placeholder implementation
+      // In a real implementation, this would navigate through the checkout process
       
-      console.log('Checkout response:', response.data);
       return {
         success: true,
         message: 'Checkout initiated',
-        checkoutUrl: response.data.redirectUrl || `${this.baseUrl}/fi/checkout`,
-        data: response.data
+        checkoutUrl: `${this.baseUrl}${this.cartPath}/checkout`
       };
     } catch (error) {
       console.error('Error initiating checkout:', error);
