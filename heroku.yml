@@ -1,0 +1,7 @@
+build:
+  config:
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: true
+    NPM_CONFIG_PRODUCTION: false
+  command:
+    - npm install
+    - npm run build
